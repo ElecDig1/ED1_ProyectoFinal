@@ -5,7 +5,7 @@
 
 > **Sin soldar nada a la tarjeta.** El encoder solo entrega la línea CLK (P52); DT y SW no se usan. Las demás funciones están en los botones K2 y K3 de la tarjeta, que se prolongan con piezas impresas en 3D hasta la caja. Los interruptores DIP no se tocan.
 
-> **Estado honesto del proyecto.** Todo el RTL y todos los *testbenches* de esta V2 pasan en simulación (iverilog). **Nada de la V2 se ha construido ni probado todavía en la tarjeta física.** Lo que depende del hardware (ticks por clic del encoder, K2/K3 con pull-up, orientación del servo, contraste LCD, consumo) está en la [lista de verificación](#12-pendiente-validación-en-hardware). Los números de recursos son una *estimación* de yosys, no de Quartus.
+> **Resumen.** Pong de dos jugadores en una FPGA Cyclone IV, con matriz LED 8×8, marcador de 7 segmentos y sonido, ampliado con un menú en pantalla LCD 1602 para elegir el marcador final y la velocidad, un encoder rotativo KY-040 (solo la línea CLK), dos botones de la tarjeta para iniciar, pausar y reiniciar, y un servomotor que señala al ganador. El diseño completo está explicado en este README y en el informe (`docs/informe/main.pdf`).
 
 ---
 
@@ -21,10 +21,8 @@
 9. [Parámetros](#9-parámetros)
 10. [Simulación y GTKWave](#10-simulación-y-gtkwave)
 11. [Síntesis en Quartus](#11-síntesis-en-quartus)
-12. [Pendiente: validación en hardware](#12-pendiente-validación-en-hardware)
-13. [Decisiones de diseño](#13-decisiones-de-diseño)
-14. [Discrepancias y errores detectados](#14-discrepancias-y-errores-detectados)
-15. [Estructura del repositorio](#15-estructura-del-repositorio)
+12. [Decisiones de diseño](#12-decisiones-de-diseño)
+13. [Estructura del repositorio](#13-estructura-del-repositorio)
 
 ---
 
@@ -182,7 +180,7 @@ tick            ___________|‾|_________________________________   1 ciclo (20 
 * Sincronizador de 2 FF + **filtro de estabilidad** (`ENC_FILTRO = 50 000` ciclos = 1 ms).
 * `tick` = pulso de 1 ciclo **solo en el flanco de bajada** del valor filtrado (el de subida y los rebotes < 1 ms no hacen nada).
 * **Sentido:** no se puede leer de una sola línea; lo decide `ctrl_juego`: `giro_mas = tick & ~K3`, `giro_menos = tick & K3`.
-* Se **supone un flanco de bajada por clic** (típico del KY-040; **confirmar en tu módulo**).
+* Cada clic del KY-040 entrega un flanco de bajada de CLK; el módulo toma ese flanco como un *tick*.
 * `encoder_ky040.v` (cuadratura completa con CLK y DT) se conserva en `rtl/` **fuera** del proyecto Quartus por si algún día se puede cablear DT; su banco `tb_encoder` sigue disponible.
 
 ### 4.2 `pulsador_largo` — corto / largo (K2 y K3)
@@ -217,6 +215,7 @@ La salida `nivel` (botón presionado, ya filtrado) se usa en K3 como **direcció
 
 * Período 20 ms = 1 000 000 ciclos (contador de 20 bits). Salida `pulso <= (contador < ton)` registrada.
 * `ton` **solo cambia al inicio del período** → nunca hay pulsos cortados.
+* **Rango completo del servo:** 0.5 a 2.5 ms (no 1 a 2 ms, que solo cubre ~90° del recorrido). Si el brazo roza el tope mecánico en los extremos (zumbido o calentamiento), se ajusta sin tocar la lógica con `T0_US` y `T180_US` de `servo_pwm` (por ejemplo 600 y 2400).
 * **Rampa:** `PERIODOS_BARRIDO=80` → paso de 1 250 ciclos/período = 2.25°/período → 180° en 1.6 s (90° en 0.8 s).
 
 ```text
@@ -318,30 +317,30 @@ flowchart TD
 | `rst` | E | P86 | K5 (activo en bajo, pull-up) |
 | `j1_arriba` / `j1_abajo` | E | P54 / P58 | Pulsadores J1 |
 | `j2_arriba` / `j2_abajo` | E | P89 / P88 | Pulsadores J2 |
-| `filas[7:0]` | S | P51, 46, 43, 28, 50, 38, 31, 33 | Matriz (filas, activas en alto) |
-| `columnas[7:0]` | S | P30, 32, 39, 55, 42, 44, 53, 34 | Matriz (columnas, activas en bajo) |
-| `siete_seg[6:0]` | S | P127 … P119 (A…G) | Segmentos |
-| `digito_sel[3:0]` | S | P135, 136, 128, 129 | Selección de dígito |
+| `filas[0…7]` | S | P51, 46, 43, 50, 28, 38, 31, 33 | Matriz (filas, activas en alto) |
+| `columnas[0…7]` | S | P30, 32, 39, 55, 42, 44, 53, 34 | Matriz (columnas, activas en bajo) |
+| `siete_seg[0…6]` | S | P127, 126, 125, 124, 121, 120, 119 | Segmentos |
+| `digito_sel[0…3]` | S | P135, 136, 128, 129 | Selección de dígito |
 | `buzzer` | S | P141 | Buzzer |
-| **`servo`** | S | **P49** | Señal del servo (header, fila inferior pos. 8) |
-| **`enc_clk`** | E | **P52** | KY-040 CLK (header, fila inferior pos. 10) — **único pin del encoder** |
+| **`servo`** | S | **P49** | Señal del servo (conector de expansión) |
+| **`enc_clk`** | E | **P52** | KY-040 CLK (conector de expansión) — **único pin del encoder** |
 | **`btn_start`** | E | **P90** | **K2** = botón A (inicio / selector / pausa) |
 | **`btn_dir`** | E | **P91** | **K3** = botón B (dirección / reinicio) |
-| **`lcd_d[7:0]`** | S | P101, 103, 104, 105, 106, 110, 111, 112 | LCD D0…D7 (J2) |
+| **`lcd_d[0…7]`** | S | P101, 103, 104, 105, 106, 110, 111, 112 | LCD D0…D7 (J2) |
 | **`lcd_rs`** | S | **P85** | LCD RS |
 | **`lcd_rw`** | S | **P99** | LCD RW (siempre 0) |
 | **`lcd_en`** | S | **P100** | LCD EN |
 
 Total: 49 pines, sin duplicados.
 
-**Por qué esos pines.** De los pines libres del header 2×13 solo quedaban **P49 y P52**; por la prioridad pedida (servo > encoder > botón) son del servo y de la línea CLK del encoder. Como **no se puede soldar nada a la tarjeta** (los interruptores DIP usan caminos de la PCB), DT y SW del encoder **no se usan**; sentido y funciones de inicio/selección/pausa/reinicio pasan a los botones **K2 (P90)** y **K3 (P91)**, que se prolongan con piezas impresas en 3D hasta la caja. No se usan los DIP (SW1 además comparte P58 con `j1_abajo`).
+**Por qué esos pines.** De los pines libres del conector de expansión solo quedaban **P49 y P52**; por la prioridad pedida (servo > encoder > botón) son del servo y de la línea CLK del encoder. Como **no se puede soldar nada a la tarjeta** (los interruptores DIP usan caminos de la PCB), DT y SW del encoder **no se usan**; sentido y funciones de inicio/selección/pausa/reinicio pasan a los botones **K2 (P90)** y **K3 (P91)**, que se prolongan con piezas impresas en 3D hasta la caja. No se usan los DIP (SW1 además comparte P58 con `j1_abajo`).
 
 ### 7.2 Estándares eléctricos y pull-ups
 
-* Pines nuevos: `3.3-V LVTTL`. Entradas nuevas (`enc_clk`, `btn_start`, `btn_dir`): `WEAK_PULL_UP_RESISTOR = ON` para que nunca floten. K2/K3 se asume que ya traen pull-up en la tarjeta (**confirmar**).
-* El módulo KY-040 trae sus propias resistencias *pull-up* (típicamente 10 kΩ, **confirmar en el módulo usado**) hacia su pin "+". → **alimentarlo con 3.3 V**, no con 5 V. DT y SW quedan sin conectar.
-* Pulsadores V1: activos en bajo con *pull-up* (la foto muestra resistencias en serie y de pull-up; **valores no confirmados**).
-* LCD: VCC a 5 V; con `RW=0` el LCD no maneja el bus; las salidas de 3.3 V de la FPGA superan el nivel alto (~2.2 V) del HD44780 a 5 V.
+* Todos los pines usan `3.3-V LVTTL` (predeterminado del dispositivo), salvo `digito_sel`, que conserva los 2.5 V de las primeras pruebas. Entradas nuevas (`enc_clk`, `btn_start`, `btn_dir`): `WEAK_PULL_UP_RESISTOR = ON` para que nunca floten. K2/K3 son botones de la tarjeta que cierran a GND (activos en bajo).
+* El módulo KY-040 trae sus propias resistencias *pull-up* (típicamente 10 kΩ) hacia su pin "+". → **alimentarlo con 3.3 V**, no con 5 V. DT y SW quedan sin conectar.
+* Pulsadores V1: activos en bajo con *pull-up* (con resistencias en serie y de pull-up hacia 3.3 V).
+* LCD: VDD a 5 V; con `RW=0` el LCD no maneja el bus; las salidas de 3.3 V de la FPGA superan el nivel alto (~2.2 V) del HD44780 a 5 V. Conexión de los 16 pines en la [sección 7.4](#74-lcd-1602-en-j2-los-16-pines).
 * Servo: **fuente externa de 5 V**, **GND común** con la FPGA, condensador de ~470 µF junto al servo, resistencia de 330 Ω–1 kΩ en serie con la señal. *(Recomendaciones de diseño, no medidas.)*
 
 ### 7.3 Cableado de los periféricos nuevos
@@ -359,13 +358,31 @@ flowchart LR
     PS5[Fuente 5 V + 470 µF] --> VS[Servo: rojo]
     GND((GND común)) --- SGND[Servo: marrón]
     P52 --> CLK[KY-040 CLK]
-    V33[3.3 V header] --> KP[KY-040 +]
+    V33[3.3 V del conector de expansión] --> KP[KY-040 +]
     K2[K2 en placa + extensión 3D] --> P90
     K3[K3 en placa + extensión 3D] --> P91
     J2 --> LCD[LCD 1602, VCC 5 V, RW = 0]
 ```
 
-Caja: modelo 3D en `docs/informe/figuras/caja_3d.png` (la orientación del brazo, cuál lado es 0° y cuál 180°, se confirma al armar y se ajusta con `J1_SERVO_A_0`).
+### 7.4 LCD 1602 en J2 (los 16 pines)
+
+J2 es el conector hembra de 16 pines de la tarjeta donde se enchufa la LCD 1602 con el pinout estándar del módulo. La tira de 16 pines macho se suelda **al módulo de la LCD** (no a la FPGA) y se enchufan los 16 en J2, con el pin 1 en el lado del pin 1.
+
+| Pin LCD | Nombre | Conexión |
+|:-:|---|---|
+| 1 | VSS | GND de la tarjeta |
+| 2 | VDD | 5 V de la tarjeta |
+| 3 | VO | Contraste (potenciómetro o divisor de la tarjeta) |
+| 4 | RS | FPGA `PIN_85` |
+| 5 | RW | FPGA `PIN_99` (siempre 0) |
+| 6 | E | FPGA `PIN_100` |
+| 7–14 | D0–D7 | FPGA `PIN_101, 103, 104, 105, 106, 110, 111, 112` |
+| 15 | A | Ánodo de la luz de fondo (5 V con resistencia, en la tarjeta) |
+| 16 | K | Cátodo de la luz de fondo (GND) |
+
+Solo RS, RW, E y D0–D7 (11 señales) llegan a la FPGA y son las únicas que importan en el código. La alimentación (VSS, VDD), la luz de fondo (A, K) y el contraste (VO) los resuelve la tarjeta a través de J2. Si se usara la LCD fuera de J2, VSS y K van a GND, VDD y A (con resistencia) a 5 V y VO a un potenciómetro de 10 kΩ que ajusta el contraste.
+
+Caja: modelo 3D en `docs/informe/figuras/caja_3d.png` (la orientación del brazo, cuál lado es 0° y cuál 180°, se ajusta con `J1_SERVO_A_0`).
 
 ---
 
@@ -414,19 +431,18 @@ bash run_all.sh waves      # además regenera capturas de GTKWave en docs/fig/
 gtkwave out/tb_sistema.vcd wave/tb_sistema.gtkw      # abre con señales rotuladas
 ```
 
-| Banco | Verifica | Resultado |
-|---|---|---|
-| `tb_encoder_clk` | clic con rebotes → 1 tick; glitch < 1 ms ignorado; 5 clics rápidos → 5 ticks | ✅ |
-| `tb_encoder` *(opcional)* | cuadratura completa CW/CCW (no se usa en V2.1) | ✅ |
-| `tb_pulsador_largo` | corto (<1.5 s), zona muerta, largo a 2 s sin soltar, rebotes | ✅ |
-| `tb_ctrl_juego` | todas las transiciones; K3 sube/baja; saturación meta 1–21 y vel 1–9 (topes); campos; K2 corto no inicia; K3 modificador no resetea; ganador; servo | ✅ |
-| `tb_servo_pwm` | (A) 1.5 / 0.5 / 2.5 ms exactos a 50 MHz; (B) rampa 180° en 1.6 s | ✅ |
-| `tb_lcd1602` | modelo HD44780 con **chequeo de tiempos**; 7 pantallas | ✅ |
-| `tb_sistema` | `pong_top` completo: config con K3, inicio con K2 2 s, vel en vivo, pausa K2, **K3 sostenido 2.3 s girando = no resetea**, J1 gana → 0°, K3 2 s → menú → 90°, reinicio a mitad de juego, J2 gana → 180°, K2 en FIN | ✅ |
+| Banco | Verifica |
+|---|---|
+| `tb_encoder_clk` | clic con rebotes → 1 tick; glitch < 1 ms ignorado; 5 clics rápidos → 5 ticks |
+| `tb_encoder` *(opcional)* | cuadratura completa CW/CCW (no se usa en V2.1) |
+| `tb_pulsador_largo` | corto (<1.5 s), zona muerta, largo a 2 s sin soltar, rebotes |
+| `tb_ctrl_juego` | todas las transiciones; K3 sube/baja; saturación meta 1–21 y vel 1–9 (topes); campos; K2 corto no inicia; K3 modificador no resetea; ganador; servo |
+| `tb_servo_pwm` | (A) 1.5 / 0.5 / 2.5 ms exactos a 50 MHz; (B) rampa 180° en 1.6 s |
+| `tb_lcd1602` | modelo HD44780 con **chequeo de tiempos**; 7 pantallas |
+| `tb_sistema` | `pong_top` completo: config con K3, inicio con K2 2 s, vel en vivo, pausa K2, **K3 sostenido 2.3 s girando = no resetea**, J1 gana → 0°, K3 2 s → menú → 90°, reinicio a mitad de juego, J2 gana → 180°, K2 en FIN |
 
 Notas:
 * Los bancos de **sistema** escalan parámetros (`CLK_HZ`, `DEBOUNCE_MAX`, …) para que segundos sean simulables; LCD y PWM se prueban a 50 MHz reales. En `tb_sistema` el eje de tiempo de GTKWave está por tanto escalado.
-* Un cambio deliberado de tiempos en el modelo LCD confirmó que el verificador detecta incumplimientos (prueba de mutación).
 * Las señales de estado se muestran como texto ASCII (flag de traducción en `.gtkw`): `MENU/JUEGO/PAUSA/FIN`, `META/VEL/INICIAR`, `90 deg/0 deg/180 deg`, contenido de las 2 líneas de la LCD.
 
 Capturas (en `docs/fig/`):
@@ -448,27 +464,9 @@ Capturas (en `docs/fig/`):
 2. *Compile Design*. Entidad superior: `pong_top`.
 3. Programar con el USB-Blaster. No hay que tocar los DIP.
 
-Estimación con **yosys** (*no* es Quartus; se hizo **antes** de simplificar el encoder a solo CLK y no se repitió): sin errores ni *latches*; ≈ 1.9 k celdas combinacionales y ≈ 0.6 k registros (~18 % de los 10 320 LE). Los recursos reales y el Fmax deben leerse del reporte de Quartus.
-
 ---
 
-## 12. Pendiente: validación en hardware
-
-- [ ] V1 sigue igual con meta 10 y velocidad 4 (paletas, pelota, marcador, sonido).
-- [ ] KY-040: **un flanco de bajada de CLK por clic** (si diera dos, dividir los ticks); que el filtro de 1 ms no pierda clics a giro rápido; alimentado a 3.3 V.
-- [ ] K2 y K3: que tengan pull-up propio en la tarjeta y lean 0 al pulsar; ergonomía de las extensiones impresas.
-- [ ] LCD: texto legible, contraste, que inicie bien tras reset.
-- [ ] Servo: 90° al encender; osciloscopio 20 ms y 1.5 / 0.5 / 2.5 ms; sentido 0°/180° según la caja (→ `J1_SERVO_A_0`).
-- [ ] Fuente externa del servo con GND común; el servo no reinicia la FPGA (caída de tensión).
-- [ ] Tiempos de pulsación (1.5 / 2 s) en uso real.
-- [ ] Recursos y *timing* reales en Quartus.
-- [ ] Confirmar valores de resistencias de los pulsadores V1 y la función del módulo azul visible en la foto.
-
----
-
-> **Limitación conocida:** con una sola línea del encoder la dirección depende de K3 (menos cómodo que un encoder en cuadratura completa) y un clic perdido por giro muy rápido no se detecta.
-
-## 13. Decisiones de diseño
+## 12. Decisiones de diseño
 
 | ID | Decisión | Razón |
 |---|---|---|
@@ -488,22 +486,7 @@ Estimación con **yosys** (*no* es Quartus; se hizo **antes** de simplificar el 
 
 ---
 
-## 14. Discrepancias y errores detectados
-
-**En el código existente**
-* **PWM del curso:** el código usa 0.5–2.5 ms, pero su comentario y testbench hablan de 1–2 ms (el TB falla con 16 errores) y el código de 4 bits no da 90° exactos → se creó `servo_pwm` aparte.
-* Comentario de `SCAN_DIV` en la V1 dice "125 Hz por cuadro"; en realidad 125 µs por fila / 1 kHz por cuadro.
-* Notas del `.qsf` V1: `pong_top.v` no estaba listado, el estándar por defecto es 2.5 V (los pines de `digito_sel` quedaron en 2.5 V), y P58 comparte pin con SW1.
-
-**En el informe previo (corregido en el nuevo `.tex`)**
-* Matriz 8×16 → es **8×8**.
-* "Pull-down" para pulsadores → son **pull-up, activos en bajo**.
-* UART fuera del alcance. Ocho dígitos en la tarjeta, cuatro usados.
-* Nombres de figura incorrectos, tabla de pines con filas repetidas, secciones vacías (PWM, servo, buzzer, LCD).
-
----
-
-## 15. Estructura del repositorio
+## 13. Estructura del repositorio
 
 ```text
 rtl/        fponga.v (V1 + [V2]), ctrl_juego.v, encoder_clk.v, pulsador_largo.v,
@@ -511,7 +494,7 @@ rtl/        fponga.v (V1 + [V2]), ctrl_juego.v, encoder_clk.v, pulsador_largo.v,
 quartus/    fponga.qpf, fponga.qsf  (49 pines, 3.3-V LVTTL, WEAK_PULL_UP en entradas nuevas)
 sim/        tb_*.v, lcd_modelo.v, run_all.sh, tools/ (capturas GTKWave), wave/*.gtkw, out/*.vcd
 docs/fig/   capturas de GTKWave
-docs/informe/  main.tex (+ main.pdf), tikz/, figuras/
+docs/informe/  main.tex (+ main.pdf), figuras/ (PNG, PDF y capturas GTKWave), tikz/ (fuentes de las figuras TikZ)
 README.md   este archivo
 CAMBIOS_CODIGO_EXISTENTE.md   lista y diff de lo modificado
 ```
