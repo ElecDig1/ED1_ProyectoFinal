@@ -1,11 +1,11 @@
 # FPONGA V2 — Pong en FPGA con menú LCD, encoder rotativo y servomotor
 
 **Tarjeta:** A-C4E6E10 · **FPGA:** Cyclone IV `EP4CE10E22C8` · **Reloj:** 50 MHz · **HDL:** Verilog-2001 · **Quartus:** 23.1 Lite
-**Autores:** David Felipe Ruiz Reyes · Luisa Fernanda Capera Velosa · Santiago Camargo Molina — Electrónica Digital I, Universidad Nacional de Colombia (docente: Johan Sebastian Eslava Garzón)
+**Autores:** Luisa Fernanda Capera Velosa · Santiago Camargo Molina · David Felipe Ruiz Reyes— Electrónica Digital I, Universidad Nacional de Colombia (docente: Johan Sebastian Eslava Garzón)
 
 > **Sin soldar nada a la tarjeta.** El encoder solo entrega la línea CLK (P52); DT y SW no se usan. Las demás funciones están en los botones K2 y K3 de la tarjeta, que se prolongan con piezas impresas en 3D hasta la caja. Los interruptores DIP no se tocan.
 
-> **Resumen.** Pong de dos jugadores en una FPGA Cyclone IV, con matriz LED 8×8, marcador de 7 segmentos y sonido, ampliado con un menú en pantalla LCD 1602 para elegir el marcador final y la velocidad, un encoder rotativo KY-040 (solo la línea CLK), dos botones de la tarjeta para iniciar, pausar y reiniciar, y un servomotor que señala al ganador. El diseño completo está explicado en este README y en el informe (`docs/informe/main.pdf`).
+> **Resumen.** Pong de dos jugadores en una FPGA Cyclone IV, con matriz LED 8×8, marcador de 7 segmentos y sonido, ampliado con un menú en pantalla LCD 1602 para elegir el marcador final y la velocidad, un encoder rotativo KY-040 (solo la línea CLK), dos botones de la tarjeta para iniciar, pausar y reiniciar, y un servomotor que señala al ganador. El diseño completo está explicado en este README y en el informe.
 
 ---
 
